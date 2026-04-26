@@ -49,43 +49,74 @@ class AdventureGameGUI:
         self.nav_frame = tk.Frame(self.action_bar, bg=self.bg_dark)
         self.nav_frame.pack(side=tk.LEFT, padx=20)
         
-        btn_s = {"bg": self.panel_bg, "fg": self.accent_gold, "width": 8, "font": ("Arial", 8, "bold"), "relief": tk.FLAT}
-        tk.Button(self.nav_frame, text="INV", command=self.show_inventory, **btn_s).pack(side=tk.LEFT, padx=2)
-        tk.Button(self.nav_frame, text="RESET", command=self.reset_game, **btn_s).pack(side=tk.LEFT, padx=2)
+        btn_s = {"fg": self.accent_gold, "width": 8, "font": ("Arial", 8, "bold"), "relief": tk.FLAT}
+        
+        # Red Reset Button
+        self.reset_btn = tk.Button(self.nav_frame, text="RESET", command=self.reset_game, 
+                                  **btn_s, bg="#ff4444", activebackground="#cc0000")
+        self.reset_btn.pack(side=tk.LEFT, padx=2)
 
         self.choices_container = tk.Frame(self.action_bar, bg=self.bg_dark)
         self.choices_container.pack(side=tk.RIGHT, padx=20)
 
-    def update_display(self, story, sys_msg, choices):
+    def prepare_for_stream(self, sys_msg, choices):
         self.story_text.config(state=tk.NORMAL)
         self.story_text.delete(1.0, tk.END)
-        if sys_msg: self.story_text.insert(tk.END, f"» {sys_msg}\n\n", "sys")
-        self.story_text.insert(tk.END, story)
-        self.story_text.tag_config("sys", foreground=self.accent_gold)
+        if sys_msg: 
+            self.story_text.insert(tk.END, f"» {sys_msg}\n\n", "sys")
         self.story_text.config(state=tk.DISABLED)
+        self.update_choices(choices) 
+        self.root.update()
 
-        self.vitals_lbl.config(text=f"HP: {self.player.health}\nSTR: {self.player.strength}\nINT: {self.player.intelligence}")
-        for w in self.inv_frame.winfo_children(): w.destroy()
-        for i in self.player.inventory: tk.Label(self.inv_frame, text=f"• {i.name}", bg=self.panel_bg, fg="white").pack(anchor="w", padx=5)
+    def stream_text(self, chunk):
+        self.story_text.config(state=tk.NORMAL)
+        self.story_text.insert(tk.END, chunk)
+        self.story_text.see(tk.END)
+        self.story_text.config(state=tk.DISABLED)
+        self.root.update() # Keeps the window responsive during background thread output
 
+    def update_choices(self, choices):
         for w in self.choices_container.winfo_children(): w.destroy()
+        
+        self.update_inventory_display()
+        self.reset_btn.config(state=tk.NORMAL)
+        
         for i, c in enumerate(choices):
             tk.Button(self.choices_container, text=c['text'].upper(), bg=self.panel_bg, fg=self.accent_neon,
-                      font=("Arial", 9, "bold"), padx=10, pady=5, command=lambda idx=i: self.on_click(idx)).pack(side=tk.LEFT, padx=5)
+                      font=("Arial", 9, "bold"), padx=10, pady=5, 
+                      command=lambda idx=i: self.on_click(idx)).pack(side=tk.LEFT, padx=5)
+
+    def update_status_vitals(self):
+        hp = getattr(self.player, 'health', 'N/A')
+        strength = getattr(self.player, 'strength', 'N/A')
+        intelligence = getattr(self.player, 'intelligence', 'N/A')
+        self.vitals_lbl.config(text=f"HP: {hp}\nSTR: {strength}\nINT: {intelligence}")
 
     def on_click(self, idx):
+        # LOCKOUT: Disable all buttons to prevent race conditions
+        for child in self.choices_container.winfo_children():
+            if isinstance(child, tk.Button):
+                child.config(state=tk.DISABLED)
+        self.reset_btn.config(state=tk.DISABLED)
+
         self.story_text.config(state=tk.NORMAL)
         self.story_text.insert(tk.END, "\n\n(Consulting the mists...)", "sys")
         self.story_text.config(state=tk.DISABLED)
-        self.root.update_idletasks()
+        self.root.update()
         self.engine.handle_choice(idx)
-
-    def show_inventory(self):
-        inv = [i.name for i in self.player.inventory]
-        messagebox.showinfo("Inventory", "\n".join(inv) if inv else "Empty.")
 
     def reset_game(self):
         if messagebox.askyesno("Reset", "Restart?"):
             self.engine.__init__()
             self.engine.gui = self
             self.engine.start()
+
+    def update_inventory_display(self):
+        """Refreshes the inventory sidebar."""
+        for w in self.inv_frame.winfo_children(): 
+            w.destroy()
+        for item in self.player.inventory: 
+            # Check if item is a string or object based on your player.py
+            name = item if isinstance(item, str) else getattr(item, 'name', 'Item')
+            tk.Label(self.inv_frame, text=f"• {name}", 
+                    bg=self.panel_bg, fg="white").pack(anchor="w", padx=5)

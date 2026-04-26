@@ -1,54 +1,65 @@
-from systems import Player, Item
+# engine.py
+import threading
+from systems import Player
 from narrative_client import NarrativeClient
+import story_data
 
 class GameEngine:
     def __init__(self, gui=None):
         self.player = Player()
         self.narrative = NarrativeClient()
         self.gui = gui
-        self.current_location = "The Sunken Gates"
-        self.last_choices = []
+        self.current_room = "start"
         self.sys_msg = None
 
     def start(self):
-        self.update_game("Awaken")
+        threading.Thread(target=self.update_game, args=("Awaken",), daemon=True).start()
+
+    def handle_choice(self, idx):
+        room_data = story_data.get_room(self.current_room)
+        choices = room_data.get('choices', [])
+        
+        if idx >= len(choices): return
+        choice = choices[idx]
+
+        # 1. APPLY EFFECTS IMMEDIATELY
+        effects = choice.get("effects", {})
+        if "inventory_add" in effects:
+            item_name = effects["inventory_add"]
+            self.player.add_item(item_name) # Passing string to our new flexible add_item
+            self.sys_msg = f"Picked up: {item_name}"
+        
+        if "health" in effects:
+            self.player.apply_effect("health", effects["health"])
+            
+        if "stats_add" in effects:
+            for stat, val in effects["stats_add"].items():
+                self.player.apply_effect(stat, val)
+
+        # 2. UPDATE LOCATION
+        self.current_room = choice.get('next_room', self.current_room)
+        
+        # 3. START NARRATION THREAD
+        threading.Thread(target=self.update_game, args=(choice['text'],), daemon=True).start()
 
     def update_game(self, action_taken):
+        official_data = story_data.get_room(self.current_room)
+        if not official_data: return
+
         state = {
-            "location": self.current_location,
-            "inventory": [i.id for i in self.player.inventory],
-            "stats": {"hp": self.player.health, "str": self.player.strength, "int": self.player.intelligence},
+            "base_description": official_data['description'],
+            "stats": {"hp": self.player.health, "str": self.player.strength},
+            "inventory": [i.name if hasattr(i, 'name') else i for i in self.player.inventory],
             "last_action": action_taken
         }
         
-        story, choices = self.narrative.get_narrative(state)
-        self.last_choices = choices
+        choices = official_data.get('choices', [])
         if self.gui:
-            self.gui.update_display(story, self.sys_msg, choices)
+            self.gui.prepare_for_stream(self.sys_msg, [])
+            self.gui.update_status_vitals()
             self.sys_msg = None
 
-    def handle_choice(self, idx):
-        if not self.last_choices or idx >= len(self.last_choices): 
-            return
-            
-        choice = self.last_choices[idx]
-        
-        # Item Requirement Check
-        req = choice.get('required_item')
-        if req and not self.player.has_item(req):
-            self.sys_msg = f"Locked: Missing {req.replace('_', ' ')}."
-            # Update display immediately without calling LLM
-            self.gui.update_display(self.gui.story_text.get(1.0, "end-1c"), self.sys_msg, self.last_choices)
-            return
+            for word_chunk in self.narrative.get_narrative_stream(state):
+                self.gui.stream_text(word_chunk)
 
-        # Effects
-        if 'effect' in choice:
-            eff = choice['effect']
-            if 'add_item' in eff:
-                if self.player.add_item(eff['add_item']):
-                    self.sys_msg = f"Found: {eff['add_item']['name']}"
-            if 'stat' in eff:
-                self.player.apply_effect(eff['stat'], eff['value'])
-
-        self.current_location = choice.get('next_location', self.current_location)
-        self.update_game(choice['text'])
+            self.gui.update_choices(choices)

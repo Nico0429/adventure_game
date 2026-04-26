@@ -1,3 +1,5 @@
+# systems.py
+
 class Item:
     def __init__(self, id, name, description):
         self.id = id
@@ -15,18 +17,37 @@ class Player:
     def get_inventory_list(self):
         return self.inventory
 
-    def has_item(self, item_id):
-        return any(item.id == item_id for item in self.inventory)
+    def has_item(self, item_name):
+        # Check if the name exists in our list of item objects or strings
+        return any(
+            (isinstance(i, str) and i == item_name) or 
+            (isinstance(i, Item) and i.name == item_name) 
+            for i in self.inventory
+        )
 
     def add_item(self, item_data):
-        if not self.has_item(item_data['id']):
-            new_item = Item(item_data['id'], item_data['name'], item_data['description'])
+        """
+        Modified to handle both dictionary data and simple strings.
+        """
+        # If it's a dictionary (older logic)
+        if isinstance(item_data, dict):
+            name = item_data.get('name', 'Unknown Item')
+            item_id = item_data.get('id', name.lower())
+            desc = item_data.get('description', '')
+        else:
+            # If it's just a string (new logic)
+            name = item_data
+            item_id = item_data.lower().replace(" ", "_")
+            desc = f"A {name}."
+
+        if not self.has_item(name):
+            new_item = Item(item_id, name, desc)
             self.inventory.append(new_item)
             return True
         return False
 
-    def remove_item(self, item_id):
-        self.inventory = [i for i in self.inventory if i.id != item_id]
+    def remove_item(self, item_name):
+        self.inventory = [i for i in self.inventory if (isinstance(i, str) and i != item_name) or (isinstance(i, Item) and i.name != item_name)]
 
     def apply_effect(self, stat, value):
         if hasattr(self, stat):

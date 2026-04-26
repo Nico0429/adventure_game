@@ -254,3 +254,13 @@ class GameEngine:
             return False
         
         return True
+    
+    def start(self):
+        """Initializes the game display with the starting room."""
+        if self.gui:
+            # Get the initial room data
+            room_data = self.get_current_room_data()
+            description = self.get_processed_description(room_data)
+            choices = self.get_available_choices()
+            # Update the GUI display
+            self.gui.update_display(description, None, choices)

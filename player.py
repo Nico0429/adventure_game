@@ -18,13 +18,16 @@ class Player:
             "wisdom": 5
         }
     
-    def add_item(self, item_name):
+    def add_item(self, item_data):
         """
-        Add an item to the player's inventory.
-        
-        Args:
-            item_name (str): The name of the item to add
+        Add an item. Supports both strings and dictionaries.
         """
+        # If item_data is a dict (from logic), extract the name
+        if isinstance(item_data, dict):
+            item_name = item_data.get('name', 'Unknown Item')
+        else:
+            item_name = item_data
+
         if item_name and item_name not in self.inventory:
             self.inventory.append(item_name)
             return True
