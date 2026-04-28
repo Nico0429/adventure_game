@@ -7,18 +7,29 @@ class NarrativeClient:
         self.model = model
 
     def get_narrative_stream(self, state):
-        # We tell the AI to skip JSON for the stream to ensure speed and stability
         prompt = (
-            f"You are the narrator. Use this base description: '{state['base_description']}' "
-            f"and rewrite it into two atmospheric paragraphs. "
-            f"Player Stats: {state['stats']}. Inventory: {state['inventory']}. "
-            f"IMPORTANT: Respond with ONLY the story text. Do not use JSON."
+            "You are a dark fantasy narrator for a Gothic adventure game. "
+            "Write exclusively in English. Do not use any other languages. " # Strict language constraint
+            f"Use this base description: '{state.get('base_description', '')}' "
+            "and rewrite it into two atmospheric, cinematic paragraphs. "
+            f"The player just took the action: '{state.get('last_action', 'Awaken')}'. "
+            f"Player Stats: {state.get('stats', 'N/A')}. "
+            f"Inventory: {state.get('inventory', 'Empty')}. "
+            "IMPORTANT: Respond ONLY with the story text in English."
         )
         
         try:
             response = requests.post(
                 self.url, 
-                json={"model": self.model, "prompt": prompt, "stream": True}, 
+                json={
+                    "model": self.model, 
+                    "prompt": prompt, 
+                    "stream": True,
+                    "options": {
+                        "temperature": 0.7, # Lower temperature = more stable language
+                        "top_p": 0.9
+                    }
+                }, 
                 stream=True,
                 timeout=90
             )

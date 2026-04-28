@@ -30,6 +30,10 @@ class AdventureGameGUI:
                                                    font=("Verdana", 11), wrap=tk.WORD, bd=0, padx=15, pady=15)
         self.story_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.story_text.config(state=tk.DISABLED)
+        
+        # --- NEW: Configure Text Tags for Colors ---
+        self.story_text.tag_config("sys", foreground=self.accent_gold, font=("Verdana", 11, "italic"))
+        self.story_text.tag_config("damage", foreground="#ff4444", font=("Verdana", 11, "bold"))
 
         sidebar = tk.Frame(container, bg=self.panel_bg, width=200)
         sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
@@ -59,11 +63,23 @@ class AdventureGameGUI:
         self.choices_container = tk.Frame(self.action_bar, bg=self.bg_dark)
         self.choices_container.pack(side=tk.RIGHT, padx=20)
 
-    def prepare_for_stream(self, sys_msg, choices):
+    def prepare_for_stream(self, sys_msg, damage_msg, choices):
+        """Updated to handle an optional red damage message."""
         self.story_text.config(state=tk.NORMAL)
         self.story_text.delete(1.0, tk.END)
+        
+        # Insert standard system message (gold)
         if sys_msg: 
-            self.story_text.insert(tk.END, f"» {sys_msg}\n\n", "sys")
+            self.story_text.insert(tk.END, f"» {sys_msg}\n", "sys")
+            
+        # Insert damage message (red)
+        if damage_msg:
+            self.story_text.insert(tk.END, f"🩸 {damage_msg}\n", "damage")
+            
+        # Add spacing before the story text starts
+        if sys_msg or damage_msg:
+            self.story_text.insert(tk.END, "\n")
+            
         self.story_text.config(state=tk.DISABLED)
         self.update_choices(choices) 
         self.root.update()
@@ -76,21 +92,60 @@ class AdventureGameGUI:
         self.root.update() # Keeps the window responsive during background thread output
 
     def update_choices(self, choices):
-        for w in self.choices_container.winfo_children(): w.destroy()
-        
-        self.update_inventory_display()
+        for w in self.choices_container.winfo_children():
+            w.destroy()
+            
         self.reset_btn.config(state=tk.NORMAL)
         
-        for i, c in enumerate(choices):
-            tk.Button(self.choices_container, text=c['text'].upper(), bg=self.panel_bg, fg=self.accent_neon,
-                      font=("Arial", 9, "bold"), padx=10, pady=5, 
-                      command=lambda idx=i: self.on_click(idx)).pack(side=tk.LEFT, padx=5)
+        # We use enumerate(choices) to keep track of the REAL index in story_data
+        for original_idx, c in enumerate(choices):
+            # 1. HIDE LOGIC
+            hide_id = c.get("hide_if_owned")
+            if hide_id and self.engine.player.has_item(hide_id):
+                continue # Skip this button, but the next button keeps its original_idx
+
+            # 2. LOCK LOGIC
+            req_id = c.get("required_item")
+            has_req = self.engine.player.has_item(req_id) if req_id else True
+
+            btn_text = c['text'].upper()
+            btn_state = tk.NORMAL
+            btn_fg = self.accent_neon
+
+            if not has_req:
+                btn_text = f"LOCKED ({req_id.replace('_', ' ')})"
+                btn_state = tk.DISABLED
+                btn_fg = "#475569"
+
+            # Pass original_idx so the engine always picks the right action
+            tk.Button(
+                self.choices_container, 
+                text=btn_text, 
+                bg=self.panel_bg, 
+                fg=btn_fg,
+                font=("Arial", 9, "bold"), 
+                padx=10, pady=5, 
+                state=btn_state,
+                command=lambda idx=original_idx: self.on_click(idx)
+            ).pack(side=tk.LEFT, padx=5)
+
 
     def update_status_vitals(self):
-        hp = getattr(self.player, 'health', 'N/A')
-        strength = getattr(self.player, 'strength', 'N/A')
-        intelligence = getattr(self.player, 'intelligence', 'N/A')
-        self.vitals_lbl.config(text=f"HP: {hp}\nSTR: {strength}\nINT: {intelligence}")
+        """Syncs GUI with the current engine player and refreshes the sidebar."""
+        # Ensure the GUI is looking at the NEW player object after a reset
+        self.player = self.engine.player
+        
+        # Update Vitals
+        hp = getattr(self.player, 'health', 100)
+        self.vitals_lbl.config(text=f"HP: {hp}\nSTR: {self.player.strength}\nINT: {self.player.intelligence}")
+        
+        # Clear and Redraw Inventory
+        for w in self.inv_frame.winfo_children():
+            w.destroy()
+            
+        for item in self.player.inventory:
+            name = item.name if hasattr(item, 'name') else str(item)
+            tk.Label(self.inv_frame, text=f"• {name}", bg=self.panel_bg, fg="white").pack(anchor="w", padx=5)
 
     def on_click(self, idx):
         # LOCKOUT: Disable all buttons to prevent race conditions
@@ -106,10 +161,16 @@ class AdventureGameGUI:
         self.engine.handle_choice(idx)
 
     def reset_game(self):
-        if messagebox.askyesno("Reset", "Restart?"):
-            self.engine.__init__()
-            self.engine.gui = self
-            self.engine.start()
+        if messagebox.askyesno("Reset", "Restart the journey?"):
+            # Use the engine's built-in reset logic to clear everything properly
+            if hasattr(self.engine, 'reset_logic'):
+                self.engine.reset_logic()
+            else:
+                # Fallback if reset_logic isn't defined
+                self.engine.player = Player()
+                self.engine.current_room = "start"
+                self.engine.sys_msg = None
+                self.engine.start()
 
     def update_inventory_display(self):
         """Refreshes the inventory sidebar."""
