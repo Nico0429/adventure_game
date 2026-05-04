@@ -133,6 +133,7 @@ class AdventureGameGUI:
         sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(12, 0), pady=2)
         sidebar.pack_propagate(False)
 
+
         tk.Label(
             sidebar,
             text="VITALS",
@@ -145,7 +146,27 @@ class AdventureGameGUI:
             highlightthickness=3,
             pady=4,
         ).pack(pady=(10, 2), fill=tk.X, padx=4)
-        
+
+        # --- Retro Health Bar ---
+        self.hp_text_lbl = tk.Label(
+            sidebar,
+            text="HP: 100/100",
+            bg=self.palette["panel_bg"],
+            fg=self.palette["damage_red"],
+            font=self.font_sidebar,
+        )
+        self.hp_text_lbl.pack(pady=(2, 0), padx=8, anchor="w")
+
+        self.hp_canvas = tk.Canvas(
+                sidebar,
+                width=180,
+                height=22,
+                bg=self.palette["panel_bg"], # Matches sidebar to hide native background
+                bd=0,                        # Strips native Tkinter borders
+                highlightthickness=0,        # Strips the focus ring
+            )
+        self.hp_canvas.pack(pady=(2, 8), padx=8, anchor="w")    
+
         self.vitals_lbl = tk.Label(
             sidebar,
             bg=self.palette["panel_bg"],
@@ -266,10 +287,34 @@ class AdventureGameGUI:
         # Ensure the GUI is looking at the NEW player object after a reset
         self.player = self.engine.player
 
-        # Update Vitals
+       # --- Health Bar ---
         hp = getattr(self.player, 'health', 100)
+        max_hp = 100
+        hp_clamped = max(0, min(hp, max_hp))
+        
+        # Exact dimensions of the canvas
+        c_width = 180
+        c_height = 22
+        fill_w = int(c_width * (hp_clamped / max_hp))
+        
+        self.hp_canvas.delete("all")
+        
+        # 1. Draw empty health background (Dark slate)
+        self.hp_canvas.create_rectangle(0, 0, c_width, c_height, fill=self.palette["border_dark"], outline="")
+        
+        # 2. Draw filled health (Red)
+        if fill_w > 0:
+            self.hp_canvas.create_rectangle(0, 0, fill_w, c_height, fill=self.palette["damage_red"], outline="")
+            
+        # 3. Draw a crisp pixel border over the top of it all
+        self.hp_canvas.create_rectangle(1, 1, c_width, c_height, outline=self.palette["offwhite"], width=2)
+        
+        # Update HP text
+        self.hp_text_lbl.config(text=f"HP: {hp}/{max_hp}")
+
+        # Update Vitals (no HP here)
         self.vitals_lbl.config(
-            text=f"HP: {hp}\nSTR: {self.player.strength}\nINT: {self.player.intelligence}",
+            text=f"STR: {self.player.strength}\nINT: {self.player.intelligence}",
             fg=self.palette["offwhite"],
             bg=self.palette["panel_bg"],
         )

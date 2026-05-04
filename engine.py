@@ -56,10 +56,19 @@ class GameEngine:
     def update_game(self, action_taken):
         # Death Check
         if not self.player.is_alive():
-            self.gui.prepare_for_stream("💀 YOU HAVE DIED", [])
-            for chunk in self.narrative.get_narrative_stream({"base_description": "The adventurer collapses, life fading as the crypt claims another soul.", "stats": {}, "inventory": []}):
+            # Update this line to include the 3rd argument
+            self.gui.prepare_for_stream("💀 YOU HAVE PERISHED", "HP REACHED 0", [])
+            
+            death_state = {
+                "base_description": "Your strength fails you. The darkness of the crypt closes in, claiming your soul forever.",
+                "stats": {"hp": 0, "str": self.player.strength},
+                "inventory": []
+            }
+            for chunk in self.narrative.get_narrative_stream(death_state):
                 self.gui.stream_text(chunk)
-            time.sleep(3) # Let them read their fate
+            
+            import time
+            time.sleep(3) 
             self.reset_logic()
             return
 
